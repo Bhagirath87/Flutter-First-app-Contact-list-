@@ -1,15 +1,19 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'add_contact_page.dart';
-
+final RouteObserver<PageRoute> routeObserver = RouteObserver<PageRoute>();
 void main() {
   runApp(MyApp());
 }
 
 // MyApp only sets up MaterialApp
 class MyApp extends StatelessWidget {
+  
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorObservers: [routeObserver],
       debugShowCheckedModeBanner: false,
       title: 'Contact App',
       home: HomePage(),
@@ -22,16 +26,71 @@ class HomePage extends StatefulWidget {
   @override
   State<HomePage> createState() => _HomePageState();
 }
-
 class _HomePageState extends State<HomePage> {
-  List<String> names = ['Bhagirath', 'Aniruddh', 'Pavan', 'Meet', 'Parth'];
-  List<String> numbers = [
-    '8780551298',
-    '6358899514',
-    '8760116019',
-    '8849924499',
-    '9099406040',
-  ];
+  List<Map<String, String>> contacts = [];
+  String? errorMessage;
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchContacts();
+  }
+
+  // Fetch contacts from backend
+  Future<void> fetchContacts() async {
+    try {
+      final url = Uri.parse('http://10.0.2.2:3000/getusersf'); // Android emulator
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        setState(() {
+          contacts = data.map<Map<String, String>>((user) => {
+                'name': (user['name'] ?? '') as String,
+                'number': (user['number'] ?? '') as String,
+              }).toList();
+          errorMessage = null;
+          isLoading = false;
+        });
+      } else {
+        setState(() {
+          errorMessage = 'Failed to fetch contacts: ${response.statusCode}';
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        errorMessage = 'Error fetching contacts: $e';
+        isLoading = false;
+      });
+    }
+  }
+
+  // Send new contact to backend
+  Future<void> addContact(Map<String, String> newContact) async {
+    try {
+      final url = Uri.parse('http://10.0.2.2:3000/create');
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'name': newContact['name'],
+          'number': newContact['number'],
+          'email': newContact['email'] ?? '',
+          'address': newContact['address'] ?? '',
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        print('Contact added successfully');
+      } else {
+        print('Failed to add contact: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error adding contact: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -50,77 +109,94 @@ class _HomePageState extends State<HomePage> {
         backgroundColor: Colors.deepPurple,
       ),
       backgroundColor: Colors.grey[100],
-      body: ListView.builder(
-        itemCount: names.length,
-        itemBuilder: (context, index) {
-          return Container(
-            width: double.infinity,
-            height: 100,
-            margin: EdgeInsets.symmetric(vertical: 10, horizontal: 16),
-            padding: EdgeInsets.all(15),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(15),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 8,
-                  spreadRadius: 2,
-                  offset: Offset(2, 4),
-                ),
-              ],
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Avatar
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: Colors.deepPurple,
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
+      body: isLoading
+          ? Center(child: CircularProgressIndicator())
+          : errorMessage != null
+              ? Center(
                   child: Text(
-                    names[index][0].toUpperCase(),
-                    style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                    errorMessage!,
+                    style: TextStyle(color: Colors.red, fontSize: 16),
                   ),
-                ),
-                SizedBox(width: 20),
-                // Name & number
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      names[index],
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.deepPurple[700],
+                )
+              : contacts.isEmpty
+                  ? Center(
+                      child: Text(
+                        'No contacts found',
+                        style: TextStyle(fontSize: 18),
                       ),
+                    )
+                  : ListView.builder(
+                      itemCount: contacts.length,
+                      itemBuilder: (context, index) {
+                        final contact = contacts[index];
+                        return Container(
+                          width: double.infinity,
+                          height: 100,
+                          margin:
+                              EdgeInsets.symmetric(vertical: 10, horizontal: 16),
+                          padding: EdgeInsets.all(15),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(15),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black12,
+                                blurRadius: 8,
+                                spreadRadius: 2,
+                                offset: Offset(2, 4),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              // Avatar
+                              Container(
+                                width: 60,
+                                height: 60,
+                                decoration: BoxDecoration(
+                                  color: Colors.deepPurple,
+                                  shape: BoxShape.circle,
+                                ),
+                                alignment: Alignment.center,
+                                child: Text(
+                                  contact['name']![0].toUpperCase(),
+                                  style: TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(width: 20),
+                              // Name & number
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    contact['name']!,
+                                    style: TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.deepPurple[700],
+                                    ),
+                                  ),
+                                  SizedBox(height: 6),
+                                  Text(
+                                    contact['number']!,
+                                    style: TextStyle(
+                                      fontSize: 16,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
-                    SizedBox(height: 6),
-                    Text(
-                      numbers[index],
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.grey[700],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-      // Use Builder to get correct context for Navigator
       floatingActionButton: Builder(
         builder: (context) => FloatingActionButton(
           onPressed: () async {
@@ -130,9 +206,9 @@ class _HomePageState extends State<HomePage> {
             );
 
             if (result != null && result is Map<String, String>) {
+              await addContact(result); // send to backend
               setState(() {
-                names.add(result['name']!);
-                numbers.add(result['number']!);
+                contacts.add(result); // update local list
               });
             }
           },
